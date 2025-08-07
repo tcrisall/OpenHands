@@ -9,6 +9,8 @@ RUN npm ci
 COPY frontend ./
 RUN npm run build
 
+# ---------------------------------------------------------------------------------------
+
 FROM python:3.12.10-slim AS base
 FROM base AS backend-builder
 
@@ -24,9 +26,13 @@ RUN apt-get update -y \
     && apt-get install -y curl make git build-essential \
     && python3 -m pip install poetry --break-system-packages
 
-COPY pyproject.toml poetry.lock ./
+COPY pyproject.toml /app/pyproject.toml
+COPY poetry.lock /app/poetry.lock
+
 RUN touch README.md
 RUN export POETRY_CACHE_DIR && poetry install --no-root && rm -rf $POETRY_CACHE_DIR
+
+# ---------------------------------------------------------------------------------------
 
 FROM base AS openhands-app
 
@@ -48,10 +54,16 @@ ENV FILE_STORE_PATH=/.openhands
 RUN mkdir -p $FILE_STORE_PATH
 RUN mkdir -p $WORKSPACE_BASE
 
+RUN apt-get update -y 
+RUN apt-get install -y curl ca-certificates gnupg2
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+RUN echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list 
 RUN apt-get update -y \
-    && apt-get install -y curl ssh sudo \
+    && apt-get install -y ssh sudo docker-ce docker-ce-cli docker-buildx-plugin docker-compose-plugin containerd.io\
     && rm -rf /var/lib/apt/lists/*
 
+# turn Docker debug on during initial testing
+RUN echo '{"debug":false,"insecure-registries":["192.168.100.86:5000"],"storage-driver": "overlay2"}' > /etc/docker/daemon.json
 # Default is 1000, but OSX is often 501
 RUN sed -i 's/^UID_MIN.*/UID_MIN 499/' /etc/login.defs
 # Default is 60000, but we've seen up to 200000
@@ -85,6 +97,7 @@ RUN find /app \! -group app -exec chgrp app {} +
 
 COPY --chown=openhands:app --chmod=770 --from=frontend-builder /app/build ./frontend/build
 COPY --chown=openhands:app --chmod=770 ./containers/app/entrypoint.sh /app/entrypoint.sh
+COPY --chown=openhands:app --chmod=770 ./containers/app/dockerd-entrypoint.sh /app/dockerd-entrypoint.sh
 
 USER root
 

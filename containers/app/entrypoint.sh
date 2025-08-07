@@ -1,6 +1,10 @@
 #!/bin/bash
 set -eo pipefail
 
+echo "Starting Docker..."
+  sudo /app/dockerd-entrypoint.sh &
+  sleep 15
+
 echo "Starting OpenHands..."
 if [[ $NO_SETUP == "true" ]]; then
   echo "Skipping setup, running as $(whoami)"
